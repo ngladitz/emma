@@ -13,6 +13,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
@@ -49,6 +50,11 @@ import com.vladium.emma.report.PackageItem;
 import com.vladium.emma.report.SourcePathCache;
 import com.vladium.emma.report.SrcFileItem;
 import com.vladium.emma.report.html.doc.*;
+
+// for JSON output
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+
 
 // ----------------------------------------------------------------------------
 /**
@@ -591,6 +597,7 @@ final class ReportGenerator extends AbstractReportGenerator
                 //page.addHR (1);
                 page.addEmptyP ();
                 {
+                    embedSrcFileJson (item, m_cache);
                     embedSrcFile (item, page, lineAnchorIDMap, m_cache);
                 }
                 //page.addHR (1);
@@ -1636,5 +1643,94 @@ final class ReportGenerator extends AbstractReportGenerator
         NESTING [base][AllItem.getTypeMetadata ().getTypeID ()] = -1;
     }
 
+  private void embedSrcFileJson (final SrcFileItem item,
+                                 final SourcePathCache cache)
+    {
+      if(cache == null)
+        {
+        return;
+        }
+      final String fileName = item.getName ();
+      final String packageVMName = ((PackageItem) item.getParent ()).getVMName ();
+      final File srcFile = cache.find (packageVMName, fileName);
+      if (srcFile == null)
+        {
+        return;
+        }
+      File outFile = new File(fileName.concat(".json"));
+      final File fullOutFile = Files.newFile (m_settings.getOutDir (), outFile);
+
+      JSONObject json = new JSONObject();
+      json.put("file", fileName);
+      json.put("package", packageVMName);
+
+      JSONArray jsonList = new JSONArray();
+
+      BufferedReader in = null;
+      try
+        {
+        in = new BufferedReader (new FileReader (srcFile), IO_BUF_SIZE);
+        IntObjectMap lineCoverageMap = item.getLineCoverage ();
+        int l = 1;
+        final int unitsType = m_settings.getUnitsType ();
+        for (String line; (line = in.readLine ()) != null; ++ l)
+          {
+          final SrcFileItem.LineCoverageData lCoverageData =
+            (SrcFileItem.LineCoverageData) lineCoverageMap.get (l);
+          String covered = "";
+          if (lCoverageData != null)
+            {
+            switch (lCoverageData.m_coverageStatus)
+              {
+              case SrcFileItem.LineCoverageData.LINE_COVERAGE_ZERO:
+                // 0 coverage
+                covered = "0";
+                break;
+              case SrcFileItem.LineCoverageData.LINE_COVERAGE_PARTIAL:
+                final int [] coverageRatio = lCoverageData.m_coverageRatio [unitsType];
+                final int d = coverageRatio [0];
+                final int n = coverageRatio [1];
+                covered = d + "/" + n;
+                // d out of n covered
+                break;
+              case SrcFileItem.LineCoverageData.LINE_COVERAGE_COMPLETE:
+                // total coverage
+                covered = "1";
+                break;
+              }
+            }
+          else
+            {
+            covered = "-1";
+            }
+          JSONObject obj = new JSONObject();
+          obj.put("source", line);
+          obj.put("covered", covered);
+          jsonList.add(obj);
+          }
+        json.put("lines", jsonList);
+        }
+      catch (Throwable t)
+        {
+        t.printStackTrace (System.out); // TODO: logging
+        }
+      finally
+        {
+        if (in != null) try { in.close (); } catch (Throwable ignore) {}
+        in = null;
+        }
+
+      try
+        {
+        FileWriter out = new FileWriter(fullOutFile);
+        out.write(json.toJSONString());
+        out.flush();
+        out.close();
+        }
+      catch (IOException e)
+        {
+        e.printStackTrace();
+        }
+    }
 } // end of class
 // ----------------------------------------------------------------------------
