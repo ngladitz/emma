@@ -1657,7 +1657,25 @@ final class ReportGenerator extends AbstractReportGenerator
         {
         return;
         }
-      File outFile = new File(fileName.concat(".json"));
+
+      File outDirFull = new File(m_settings.getOutDir (), packageVMName);
+      if(!outDirFull.exists ())
+        {
+        outDirFull.mkdirs ();
+        }
+
+      File outDir = null;
+
+      if(packageVMName.isEmpty())
+        {
+        outDir = new File(".");
+        }
+      else
+        {
+        outDir = new File(packageVMName);
+        }
+
+      File outFile = new File(outDir, fileName.concat(".json"));
       final File fullOutFile = Files.newFile (m_settings.getOutDir (), outFile);
 
       JSONObject json = new JSONObject();
